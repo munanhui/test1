@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>블로그 크롤링</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <h2>블로그 선택</h2>
+    <form method="POST">
+        <div>
+            {% for blog in blog_ids %}
+                <input type="checkbox" name="selected_blog_ids" value="{{ blog.id }}"> {{ blog.alias }}<br>
+            {% endfor %}
+        </div>
+        <h3>블로그 추가</h3>
+        <input type="text" name="new_blog_id" placeholder="블로그 ID">
+        <input type="text" name="new_blog_alias" placeholder="별칭">
+        <button type="submit">추가</button>
+        <br><br>
+        <button type="submit">크롤링 시작</button>
+    </form>
+</body>
+</html>
+
+

@@ -68,13 +68,22 @@ def get_blog_posts(driver, blog_id, post_limit):
     except Exception as e:
         print("오픈 리스트 버튼 에러:", e)        
 
-    # 드롭다운 메뉴 선택 예시 (실제 CSS 선택자나 요소 이름은 페이지 구조에 따라 달라집니다)
+     # 2) 드롭다운 열기
     try:
-        dropdown = Select(wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "select.some_dropdown_selector"))))
-        dropdown.select_by_value(str(post_limit))  # 값이 "15"인 옵션 선택
-        time.sleep(3)  # 옵션 적용 대기
+        dropdown = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#changeListCount.dropdown_select._changeListCount")))
+        dropdown.click()  
+        # 클릭 후 드롭다운이 펼쳐질 시간을 잠시 대기
     except Exception as e:
-        print("드롭다운 선택 오류:", e) 
+        print("드롭다운 열기 오류:", e)
+
+    # 3) 원하는 옵션 클릭 (예: data-value="15")
+    try:
+        option_selector = f"a.area-option._returnFalse.aggregate[data-value='{post_limit}']"
+        option_elem = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, option_selector)))
+        option_elem.click()
+        # 옵션 적용 후 새로 로딩되거나 목록이 갱신되는 시간을 잠시 대기
+    except Exception as e:
+        print("드롭다운 옵션 선택 오류:", e)
 
     try:
         table = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "table.blog2_list.blog2_categorylist")))

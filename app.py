@@ -65,8 +65,8 @@ def get_blog_posts(driver, blog_id, post_limit):
         btn_all = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "a.btn_openlist")))
         btn_all.click()
         time.sleep(3)
-    except:
-        pass
+    except Exception as e:
+        print("오픈 리스트 버튼 에러:", e)        
 
     # 드롭다운 메뉴 선택 예시 (실제 CSS 선택자나 요소 이름은 페이지 구조에 따라 달라집니다)
     try:
@@ -74,11 +74,12 @@ def get_blog_posts(driver, blog_id, post_limit):
         dropdown.select_by_value(str(post_limit))  # 값이 "15"인 옵션 선택
         time.sleep(3)  # 옵션 적용 대기
     except Exception as e:
-        print("드롭다운 선택 오류:", e)
+        print("드롭다운 선택 오류:", e) 
 
     try:
         table = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "table.blog2_list.blog2_categorylist")))
-    except:
+    except Exception as e:
+        print("테이블 읽기 오류:", e)         
         return []
 
     post_elements = table.find_elements(By.CSS_SELECTOR, "tbody tr")
@@ -98,7 +99,8 @@ def get_blog_posts(driver, blog_id, post_limit):
 
             if post_date:
                 results.append((post_date, title, url))
-        except:
+        except Exception as e:
+            print("카테고리 아래 삭제 에러:", e) 
             continue
     
     return results

@@ -155,6 +155,10 @@ def index():
 
     return render_template("index.html", blog_ids=blog_ids)
 
+@app.route("/hello")
+def hello():
+    return "abc"
+
 if __name__ == "__main__":
     os.makedirs(DATA_FOLDER, exist_ok=True)
     if not os.path.exists(BLOG_IDS_FILE):

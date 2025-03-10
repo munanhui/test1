@@ -10,6 +10,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from openpyxl import Workbook
@@ -66,6 +67,14 @@ def get_blog_posts(driver, blog_id, post_limit):
         time.sleep(3)
     except:
         pass
+
+    # 드롭다운 메뉴 선택 예시 (실제 CSS 선택자나 요소 이름은 페이지 구조에 따라 달라집니다)
+    try:
+        dropdown = Select(wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "select.some_dropdown_selector"))))
+        dropdown.select_by_value(str(post_limit))  # 값이 "15"인 옵션 선택
+        time.sleep(3)  # 옵션 적용 대기
+    except Exception as e:
+        print("드롭다운 선택 오류:", e)
 
     try:
         table = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "table.blog2_list.blog2_categorylist")))

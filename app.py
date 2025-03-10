@@ -127,7 +127,7 @@ def index():
 
         # 선택된 블로그가 있다면 크롤링 시작
         if selected_blog_ids:
-            service = Service(ChromeDriverManager().install())
+            service = Service(ChromeDriverManager(driver_version="134.0.6998.35").install())
             options = Options()
             options.add_argument("--headless")
             options.add_argument("--no-sandbox")

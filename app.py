@@ -3,6 +3,8 @@ import json
 import time
 import re
 import tempfile
+import logging
+from selenium.webdriver.remote.remote_connection import LOGGER
 from datetime import datetime, timedelta
 from flask import Flask, request, send_file, render_template, jsonify
 from selenium import webdriver
@@ -13,6 +15,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from openpyxl import Workbook
 
 app = Flask(__name__)
@@ -20,6 +23,8 @@ app = Flask(__name__)
 # 데이터 저장 폴더와 파일 경로
 DATA_FOLDER = "data"
 BLOG_IDS_FILE = os.path.join(DATA_FOLDER, "blog_ids.json")
+LOGGER.setLevel(logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG)
 
 # 블로그 ID 목록 불러오기
 def load_blog_ids():
@@ -56,63 +61,86 @@ def parse_absolute_date(date_str):
 # 블로그 크롤링 함수
 # 지정한 post_limit 만큼 게시물을 수집
 def get_blog_posts(driver, blog_id, post_limit):
+    """
+    페이지네이션을 통해 blog_id의 게시글을 최대 post_limit개까지 수집.
+    (1페이지=5개로 가정)
+    """
     blog_list_url = f"https://blog.naver.com/PostList.naver?blogId={blog_id}"
     driver.get(blog_list_url)
     time.sleep(5)
     
     wait = WebDriverWait(driver, 15)
+    
+    # 1) "전체글 보기" 버튼 클릭
     try:
         btn_all = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "a.btn_openlist")))
         btn_all.click()
         time.sleep(3)
     except Exception as e:
-        print("오픈 리스트 버튼 에러:", e)        
+        print("오픈 리스트 버튼 에러:", e)
 
-     # 2) 드롭다운 열기
-    try:
-        dropdown = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#changeListCount.dropdown_select._changeListCount")))
-        dropdown.click()  
-        # 클릭 후 드롭다운이 펼쳐질 시간을 잠시 대기
-    except Exception as e:
-        print("드롭다운 열기 오류:", e)
-
-    # 3) 원하는 옵션 클릭 (예: data-value="15")
-    try:
-        option_selector = f"a.area-option._returnFalse.aggregate[data-value='{post_limit}']"
-        option_elem = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, option_selector)))
-        option_elem.click()
-        # 옵션 적용 후 새로 로딩되거나 목록이 갱신되는 시간을 잠시 대기
-    except Exception as e:
-        print("드롭다운 옵션 선택 오류:", e)
-
-    try:
-        table = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "table.blog2_list.blog2_categorylist")))
-    except Exception as e:
-        print("테이블 읽기 오류:", e)         
-        return []
-
-    post_elements = table.find_elements(By.CSS_SELECTOR, "tbody tr")
     results = []
-    
-    for post in post_elements:
+    # 예: post_limit=15 -> 3페이지, post_limit=10 -> 2페이지
+    pages_needed = (post_limit + 4) // 5  # 5로 나눈 뒤 올림 처리
+
+    for page_num in range(1, pages_needed + 1):
+        # 2) 게시글 목록 테이블 로딩 대기
+        try:
+            time.sleep(2)
+            table = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "table.blog2_list.blog2_categorylist")))
+        except Exception as e:
+            print("테이블 읽기 오류:", e)
+            break
+
+        # 3) 게시글 정보 추출
+        post_elements = table.find_elements(By.CSS_SELECTOR, "tbody tr")
+        for post in post_elements:
+            if len(results) >= post_limit:
+                break
+            try:
+                title_elem = post.find_element(By.CSS_SELECTOR, "td.title a")
+                title = title_elem.text.strip()
+                url = title_elem.get_attribute("href").split("&category")[0]
+
+                date_elem = post.find_element(By.CSS_SELECTOR, "td.date span.date")
+                date_text = date_elem.text.strip()
+                if not date_text:
+                     print("[INFO] 날짜가 비어있어 게시글 스킵:", title)
+                continue    
+
+                post_date = parse_relative_date(date_text) if "전" in date_text else parse_absolute_date(date_text)
+
+                if post_date:
+                    results.append((post_date, title, url))
+
+            except ValueError as ve:
+        # strptime 실패 등 날짜 포맷 오류 처리
+                print("[ERROR] 날짜 파싱 오류:", ve, "date_text:", date_text)
+                continue
+            except Exception as e:
+                print("게시글 파싱 에러:", e)
+                continue
+
+        # 이미 원하는 개수를 다 모았으면 종료
         if len(results) >= post_limit:
             break
+
+        # 4) 다음 페이지 버튼 클릭
+        #    (예: a.page.pcol2._goPageTop._param(2))
         try:
-            title_elem = post.find_element(By.CSS_SELECTOR, "td.title a")
-            title = title_elem.text.strip()
-            url = title_elem.get_attribute("href").split("&category")[0]
-
-            date_elem = post.find_element(By.CSS_SELECTOR, "td.date span.date")
-            date_text = date_elem.text.strip()
-            post_date = parse_relative_date(date_text) if "전" in date_text else parse_absolute_date(date_text)
-
-            if post_date:
-                results.append((post_date, title, url))
+            next_selector = f"a.page.pcol2._goPageTop._param\\({page_num+1}\\)"
+            next_page_link = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, next_selector)))
+            next_page_link.click()
+            time.sleep(5)  # 페이지 이동 후 로딩 대기
+        except TimeoutException:
+            print("[INFO] 다음 페이지 버튼을 찾지 못했습니다. (마지막 페이지 가능)")
+            break
         except Exception as e:
-            print("카테고리 아래 삭제 에러:", e) 
-            continue
-    
+            print("[ERROR] 다음 페이지 이동 오류:", e)
+            break
+
     return results
+
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -138,7 +166,7 @@ def index():
 
         # 선택된 블로그가 있다면 크롤링 시작
         if selected_blog_ids:
-            service = Service(ChromeDriverManager(driver_version="134.0.6998.35").install())
+            service = Service(ChromeDriverManager(driver_version="133").install())
             options = Options()
             options.add_argument("--headless")
             options.add_argument("--no-sandbox")

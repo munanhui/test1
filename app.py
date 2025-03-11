@@ -16,6 +16,7 @@ from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.common.exceptions import NoSuchElementException
 from openpyxl import Workbook
 
 app = Flask(__name__)
@@ -70,12 +71,36 @@ def get_blog_posts(driver, blog_id, post_limit):
     time.sleep(5)
     
     wait = WebDriverWait(driver, 15)
-    
-    # 1) "전체글 보기" 버튼 클릭
+
+    # 1) '블로그' 탭 클릭 (프롤로그가 기본인 경우 대비)
+    # XPath: class 속성에 '_param(false|blog|)'를 포함하는 <a> 태그 찾기
+    try:
+        blog_tab_xpath = "//a[contains(@class, '_param(false|blog|)')]"
+        blog_tab = wait.until(EC.element_to_be_clickable((By.XPATH, blog_tab_xpath)))
+        driver.execute_script("arguments[0].scrollIntoView(true);", blog_tab)
+        blog_tab.click()
+        time.sleep(3)
+    except Exception as e:
+        print("[INFO] 블로그 탭이 없거나 클릭 실패. 이미 블로그 페이지일 수 있음:", e)
+
+    # 2) (선택) mainFrame 전환 - 구 에디터 블로그가 mainFrame을 쓰는 경우
+    try:
+        wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, "mainFrame")))
+    except TimeoutException:
+        print("[INFO] mainFrame이 없는 블로그일 수 있음.")
+
+    # 3) "전체글 보기" 버튼 클릭
     try:
         btn_all = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "a.btn_openlist")))
-        btn_all.click()
-        time.sleep(3)
+        driver.execute_script("arguments[0].scrollIntoView(true);", btn_all)
+        toggle_text_elem = btn_all.find_element(By.CSS_SELECTOR, "span#toplistSpanBlind")
+        toggle_text = toggle_text_elem.text.strip()
+
+        if "목록열기" in toggle_text:
+            btn_all.click()
+            time.sleep(3)
+        else:
+            print("[INFO] 이미 목록이 열려 있음. (목록닫기 상태) 클릭 생략")
     except Exception as e:
         print("오픈 리스트 버튼 에러:", e)
 
@@ -99,6 +124,11 @@ def get_blog_posts(driver, blog_id, post_limit):
                 break
             try:
                 title_elem = post.find_element(By.CSS_SELECTOR, "td.title a")
+            except NoSuchElementException:
+                print("[INFO] 게시글이 아닌 행입니다. 스킵합니다.")
+                continue
+            
+            try:
                 title = title_elem.text.strip()
                 url = title_elem.get_attribute("href").split("&category")[0]
 
@@ -106,7 +136,7 @@ def get_blog_posts(driver, blog_id, post_limit):
                 date_text = date_elem.text.strip()
                 if not date_text:
                      print("[INFO] 날짜가 비어있어 게시글 스킵:", title)
-                continue    
+                     continue   
 
                 post_date = parse_relative_date(date_text) if "전" in date_text else parse_absolute_date(date_text)
 
@@ -130,6 +160,7 @@ def get_blog_posts(driver, blog_id, post_limit):
         try:
             next_selector = f"a.page.pcol2._goPageTop._param\\({page_num+1}\\)"
             next_page_link = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, next_selector)))
+            driver.execute_script("arguments[0].scrollIntoView(true);", next_page_link)  # 스크롤로 화면에 보이도록
             next_page_link.click()
             time.sleep(5)  # 페이지 이동 후 로딩 대기
         except TimeoutException:

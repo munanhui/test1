@@ -59,6 +59,42 @@ def parse_absolute_date(date_str):
     fixed = re.sub(r'\s+', '', date_str).rstrip('.')
     return datetime.strptime(fixed, "%Y.%m.%d")
 
+#카테고리 열고닫고 전체보기 클릭
+def open_whole_category(driver):
+    """
+    1) 카테고리 목록이 접혀 있으면 펼친다 (display: none → display: block).
+    2) '전체보기'(id='category0') 링크를 클릭한다.
+    """
+    wait = WebDriverWait(driver, 15)
+
+    # (1) 카테고리 목록 래퍼 확인
+    try:
+        category_wrap = wait.until(EC.presence_of_element_located(
+            (By.CSS_SELECTOR, "div#categoryListWrap")  # 실제 래퍼 셀렉터 확인 필요
+        ))
+        style_attr = category_wrap.get_attribute("style")  # 예: "display: none;" or "display: block;"
+        if "display: none" in style_attr:
+            print("[INFO] 카테고리가 접혀 있으므로 펼칩니다.")
+            toggle_btn = wait.until(EC.element_to_be_clickable(
+                (By.CSS_SELECTOR, "button#category-list-i")  # 실제 토글 버튼 셀렉터 확인
+            ))
+            driver.execute_script("arguments[0].scrollIntoView(true);", toggle_btn)
+            toggle_btn.click()
+            time.sleep(2)
+        else:
+            print("[INFO] 카테고리가 이미 열려 있음.")
+    except Exception as e:
+        print("[INFO] 카테고리 래퍼를 찾지 못하거나 이미 펼쳐져 있을 수 있음:", e)
+
+    # (2) '전체보기' 링크 (id='category0') 클릭
+    try:
+        whole_link = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "a#category0")))
+        driver.execute_script("arguments[0].scrollIntoView(true);", whole_link)
+        whole_link.click()
+        time.sleep(2)
+    except Exception as e:
+        print("[ERROR] '전체보기' 링크 클릭 실패:", e)
+
 # 블로그 크롤링 함수
 # 지정한 post_limit 만큼 게시물을 수집
 def get_blog_posts(driver, blog_id, post_limit):
@@ -88,6 +124,9 @@ def get_blog_posts(driver, blog_id, post_limit):
         wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, "mainFrame")))
     except TimeoutException:
         print("[INFO] mainFrame이 없는 블로그일 수 있음.")
+
+        # 2-1) 카테고리 열림 상태 확인 & 전체보기 클릭
+    open_whole_category(driver)
 
     # 3) "전체글 보기" 버튼 클릭
     try:
@@ -180,50 +219,68 @@ def index():
     id_to_alias = {blog["id"]: blog["alias"] for blog in blog_ids if "id" in blog and "alias" in blog}
 
     if request.method == "POST":
-        selected_blog_ids = request.form.getlist("selected_blog_ids")
-        new_blog_id = request.form.get("new_blog_id")
-        new_blog_alias = request.form.get("new_blog_alias")
-        post_count = request.form.get("post_count", "10")  # 기본값은 10건
-        try:
-            post_limit = int(post_count)
-        except ValueError:
-            post_limit = 10
+        action = request.form.get("action")  # 어떤 버튼이 눌렸는지 구분 (add_blog or crawl)
 
-        # 새로운 블로그 추가 처리
-        if new_blog_id and new_blog_alias:
-            blog_ids.append({"id": new_blog_id, "alias": new_blog_alias})
-            save_blog_ids(blog_ids)
-            id_to_alias[new_blog_id] = new_blog_alias
+        #  1) 블로그 추가 로직
+        if action == "add_blog":
+            new_blog_id = request.form.get("new_blog_id", "").strip()
+            new_blog_alias = request.form.get("new_blog_alias", "").strip()
+            
+            if new_blog_id and new_blog_alias:
+                # 중복 체크
+                duplicate = False
+                for b in blog_ids:
+                    if b["id"] == new_blog_id or b["alias"] == new_blog_alias:
+                        duplicate = True
+                        break
+                
+                if duplicate:
+                    print("[INFO] 중복된 블로그입니다. 추가하지 않습니다.")
+                else:
+                    blog_ids.append({"id": new_blog_id, "alias": new_blog_alias})
+                    save_blog_ids(blog_ids)
+                    id_to_alias[new_blog_id] = new_blog_alias
+                    print("[INFO] 새로운 블로그 추가 완료:", new_blog_id, new_blog_alias)
 
-        # 선택된 블로그가 있다면 크롤링 시작
-        if selected_blog_ids:
-            service = Service(ChromeDriverManager(driver_version="133").install())
-            options = Options()
-            options.add_argument("--headless")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
+        #  2) 크롤링 로직
+        if action == "crawl":
+            selected_blog_ids = request.form.getlist("selected_blog_ids")
+            post_count = request.form.get("post_count", "10")  # 기본값은 10건
+            try:
+                post_limit = int(post_count)
+            except ValueError:
+                post_limit = 10
 
-            driver = webdriver.Chrome(service=service, options=options)
+            # 선택된 블로그가 있다면 크롤링 시작
+            if selected_blog_ids:
+                service = Service(ChromeDriverManager(driver_version="133").install())
+                options = Options()
+                options.add_argument("--headless")
+                options.add_argument("--no-sandbox")
+                options.add_argument("--disable-dev-shm-usage")
 
-            wb = Workbook()
-            ws = wb.active
-            ws.append(["블로그명", "작성일", "제목", "링크"])
+                driver = webdriver.Chrome(service=service, options=options)
 
-            for blog_id in selected_blog_ids:
-                posts = get_blog_posts(driver, blog_id, post_limit)
-                for post_date, title, url in posts:
-                    # 날짜를 *(MM.DD) 형식으로 변환
-                    formatted_date = post_date.strftime("*(%m.%d)")
-                    alias = id_to_alias.get(blog_id, blog_id)
-                    ws.append([alias, formatted_date, title, url])
+                wb = Workbook()
+                ws = wb.active
+                ws.append(["블로그명", "작성일", "제목", "링크"])
 
-            driver.quit()
+                for blog_id in selected_blog_ids:
+                    posts = get_blog_posts(driver, blog_id, post_limit)
+                    for post_date, title, url in posts:
+                        # 날짜를 *(MM.DD) 형식으로 변환
+                        formatted_date = post_date.strftime("*(%m.%d)")
+                        alias = id_to_alias.get(blog_id, blog_id)
+                        ws.append([alias, formatted_date, title, url])
 
-            temp_filename = tempfile.mktemp(suffix=".xlsx")
-            wb.save(temp_filename)
-            return send_file(temp_filename, as_attachment=True)
+                driver.quit()
+
+                temp_filename = tempfile.mktemp(suffix=".xlsx")
+                wb.save(temp_filename)
+                return send_file(temp_filename, as_attachment=True)
 
     return render_template("index.html", blog_ids=blog_ids)
+
 
 @app.route("/hello")
 def hello():

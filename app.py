@@ -119,14 +119,16 @@ def get_blog_posts(driver, blog_id, post_limit):
     except Exception as e:
         print("[INFO] 블로그 탭이 없거나 클릭 실패. 이미 블로그 페이지일 수 있음:", e)
 
-    # 2) (선택) mainFrame 전환 - 구 에디터 블로그가 mainFrame을 쓰는 경우
+        # 2) (선택) mainFrame 전환 - 구 에디터 블로그가 mainFrame을 쓰는 경우
     try:
         wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, "mainFrame")))
+        print("[INFO] mainFrame으로 전환 완료")
     except TimeoutException:
         print("[INFO] mainFrame이 없는 블로그일 수 있음.")
 
-        # 2-1) 카테고리 열림 상태 확인 & 전체보기 클릭
+    # 🔹 카테고리 열림 상태 확인 & 전체보기 클릭 (무조건 실행)
     open_whole_category(driver)
+
 
     # 3) "전체글 보기" 버튼 클릭
     try:

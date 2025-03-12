@@ -250,7 +250,7 @@ def index():
 
         #  2) 크롤링 로직
         if action == "crawl":
-    selected_blog_ids = request.form.getlist("selected_blog_ids")
+            selected_blog_ids = request.form.getlist("selected_blog_ids")
     post_count = request.form.get("post_count", "10")  # 기본값은 10건
     try:
         post_limit = int(post_count)

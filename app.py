@@ -104,37 +104,34 @@ def open_whole_category(driver):
 def get_blog_posts(driver, blog_id, post_limit):
     """
     페이지네이션을 통해 blog_id의 게시글을 최대 post_limit개까지 수집.
-    (1페이지=5개로 가정)
     """
-    with browser_semaphore:  # ✅ 동시 실행 제한 적용
-        blog_list_url = f"https://blog.naver.com/PostList.naver?blogId={blog_id}"
-        driver.get(blog_list_url)
-        time.sleep(5)
+    blog_list_url = f"https://blog.naver.com/PostList.naver?blogId={blog_id}"
+    driver.get(blog_list_url)
+    time.sleep(5)
 
-        wait = WebDriverWait(driver, 15)
+    wait = WebDriverWait(driver, 15)
 
-        # 1) '블로그' 탭 클릭 (프롤로그가 기본인 경우 대비)
-        try:
-            blog_tab_xpath = "//a[contains(@class, '_param(false|blog|)')]"
-            blog_tab = wait.until(EC.element_to_be_clickable((By.XPATH, blog_tab_xpath)))
-            driver.execute_script("arguments[0].scrollIntoView(true);", blog_tab)
-            blog_tab.click()
-            time.sleep(3)
-        except Exception as e:
-            print("[INFO] 블로그 탭이 없거나 클릭 실패. 이미 블로그 페이지일 수 있음:", e)
+    # '블로그' 탭 클릭
+    try:
+        blog_tab_xpath = "//a[contains(@class, '_param(false|blog|)')]"
+        blog_tab = wait.until(EC.element_to_be_clickable((By.XPATH, blog_tab_xpath)))
+        driver.execute_script("arguments[0].scrollIntoView(true);", blog_tab)
+        blog_tab.click()
+        time.sleep(3)
+    except Exception as e:
+        print("[INFO] 블로그 탭이 없거나 클릭 실패:", e)
 
-        # 2) (선택) mainFrame 전환 - 구 에디터 블로그가 mainFrame을 쓰는 경우
-        try:
-            wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, "mainFrame")))
-            print("[INFO] mainFrame으로 전환 완료")
-        except TimeoutException:
-            print("[INFO] mainFrame이 없는 블로그일 수 있음.")
+    # (선택) mainFrame 전환
+    try:
+        wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, "mainFrame")))
+        print("[INFO] mainFrame으로 전환 완료")
+    except TimeoutException:
+        print("[INFO] mainFrame이 없는 블로그일 수 있음.")
 
-    # 🔹 카테고리 열림 상태 확인 & 전체보기 클릭 (무조건 실행)
+    # 카테고리 열림 상태 확인 & 전체보기 클릭
     open_whole_category(driver)
 
-
-    # 3) "전체글 보기" 버튼 클릭
+    # "전체글 보기" 버튼 클릭
     try:
         btn_all = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "a.btn_openlist")))
         driver.execute_script("arguments[0].scrollIntoView(true);", btn_all)
@@ -149,12 +146,14 @@ def get_blog_posts(driver, blog_id, post_limit):
     except Exception as e:
         print("오픈 리스트 버튼 에러:", e)
 
+    # ✅ 게시글을 저장할 리스트 (이거 꼭 필요함!)
     results = []
-    # 예: post_limit=15 -> 3페이지, post_limit=10 -> 2페이지
+
+    # 예: post_limit=15 → 3페이지, post_limit=10 → 2페이지
     pages_needed = (post_limit + 4) // 5  # 5로 나눈 뒤 올림 처리
 
     for page_num in range(1, pages_needed + 1):
-        # 2) 게시글 목록 테이블 로딩 대기
+        # 게시글 목록 테이블 로딩 대기
         try:
             time.sleep(2)
             table = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "table.blog2_list.blog2_categorylist")))
@@ -162,7 +161,7 @@ def get_blog_posts(driver, blog_id, post_limit):
             print("테이블 읽기 오류:", e)
             break
 
-        # 3) 게시글 정보 추출
+        # 게시글 정보 추출
         post_elements = table.find_elements(By.CSS_SELECTOR, "tbody tr")
         for post in post_elements:
             if len(results) >= post_limit:
@@ -180,8 +179,8 @@ def get_blog_posts(driver, blog_id, post_limit):
                 date_elem = post.find_element(By.CSS_SELECTOR, "td.date span.date")
                 date_text = date_elem.text.strip()
                 if not date_text:
-                     print("[INFO] 날짜가 비어있어 게시글 스킵:", title)
-                     continue   
+                    print("[INFO] 날짜가 비어있어 게시글 스킵:", title)
+                    continue   
 
                 post_date = parse_relative_date(date_text) if "전" in date_text else parse_absolute_date(date_text)
 
@@ -189,7 +188,6 @@ def get_blog_posts(driver, blog_id, post_limit):
                     results.append((post_date, title, url))
 
             except ValueError as ve:
-        # strptime 실패 등 날짜 포맷 오류 처리
                 print("[ERROR] 날짜 파싱 오류:", ve, "date_text:", date_text)
                 continue
             except Exception as e:
@@ -200,14 +198,13 @@ def get_blog_posts(driver, blog_id, post_limit):
         if len(results) >= post_limit:
             break
 
-        # 4) 다음 페이지 버튼 클릭
-        #    (예: a.page.pcol2._goPageTop._param(2))
+        # 다음 페이지 버튼 클릭
         try:
             next_selector = f"a.page.pcol2._goPageTop._param\\({page_num+1}\\)"
             next_page_link = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, next_selector)))
-            driver.execute_script("arguments[0].scrollIntoView(true);", next_page_link)  # 스크롤로 화면에 보이도록
+            driver.execute_script("arguments[0].scrollIntoView(true);", next_page_link)  
             next_page_link.click()
-            time.sleep(5)  # 페이지 이동 후 로딩 대기
+            time.sleep(5)  
         except TimeoutException:
             print("[INFO] 다음 페이지 버튼을 찾지 못했습니다. (마지막 페이지 가능)")
             break
@@ -215,7 +212,8 @@ def get_blog_posts(driver, blog_id, post_limit):
             print("[ERROR] 다음 페이지 이동 오류:", e)
             break
 
-    return results
+    return results  # ✅ 결과 반환 (이게 없으면 크롤링한 데이터가 없음!)
+
 
 
 @app.route("/", methods=["GET", "POST"])

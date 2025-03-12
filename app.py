@@ -266,6 +266,12 @@ def index():
                 options.add_argument("--disable-software-rasterizer")
                 options.add_argument("--disable-features=VizDisplayCompositor")
                 options.add_argument("--disable-background-networking")
+                options.add_argument("--disable-crash-reporter")  # 크래시 리포터 비활성화
+                options.add_argument("--disable-extensions")  # 확장 프로그램 비활성화
+                options.add_argument("--disable-sync")  # 동기화 비활성화
+                options.add_argument("--disable-logging")  # 로깅 최소화
+                options.add_argument("--disable-default-apps")  # 기본 앱 비활성화
+
 
                 # ✅ 세션 충돌 방지
                 import tempfile

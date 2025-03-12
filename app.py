@@ -244,7 +244,7 @@ def index():
                 else:
                     print("[INFO] 중복된 블로그입니다. 추가하지 않습니다.")
 
-        # 2) 크롤링 로직
+        # ✅ 크롤링 로직
         elif action == "crawl":
             selected_blog_ids = request.form.getlist("selected_blog_ids")
             post_count = request.form.get("post_count", "10")  # 기본값은 10건
@@ -258,29 +258,53 @@ def index():
                 service = Service(ChromeDriverManager(driver_version="133").install())
                 options = Options()
 
-                # ✅ 크롬 안정성 향상 옵션 추가
-                options.add_argument("--headless")
-                options.add_argument("--no-sandbox")
-                options.add_argument("--disable-dev-shm-usage")
-                options.add_argument("--disable-gpu")
-                options.add_argument("--disable-software-rasterizer")
-                options.add_argument("--disable-features=VizDisplayCompositor")
-                options.add_argument("--disable-background-networking")
-                options.add_argument("--disable-crash-reporter")  # 크래시 리포터 비활성화
-                options.add_argument("--disable-extensions")  # 확장 프로그램 비활성화
-                options.add_argument("--disable-sync")  # 동기화 비활성화
-                options.add_argument("--disable-logging")  # 로깅 최소화
-                options.add_argument("--disable-default-apps")  # 기본 앱 비활성화
+                # ✅ WebDriver 충돌 방지 및 안정성 향상
+                temp_user_dir = tempfile.mkdtemp()  # ✅ 세션 충돌 방지 (고유한 사용자 디렉토리 생성)
+                random_port = random.randint(9222, 9999)  # ✅ 포트 충돌 방지
 
+                options.add_argument("--headless=new")  # ✅ 최신 헤드리스 모드 사용 (더 안정적)
+                options.add_argument("--no-sandbox")  # ✅ 샌드박스 비활성화 (권한 문제 방지)
+                options.add_argument("--disable-dev-shm-usage")  # ✅ /dev/shm 사용 방지 (메모리 부족 방지)
+                options.add_argument("--disable-gpu")  # ✅ GPU 비활성화 (서버에서 필요 없음)
+                options.add_argument("--disable-software-rasterizer")  # ✅ 소프트웨어 가속 방지
+                options.add_argument("--disable-features=VizDisplayCompositor")  # ✅ 불필요한 UI 렌더링 방지
+                options.add_argument("--disable-background-networking")  # ✅ 불필요한 네트워크 사용 방지
+                options.add_argument("--disable-crash-reporter")  # ✅ 크래시 리포터 비활성화 (안정성 향상)
+                options.add_argument("--disable-extensions")  # ✅ 확장 프로그램 비활성화
+                options.add_argument("--disable-sync")  # ✅ 동기화 비활성화
+                options.add_argument("--disable-logging")  # ✅ 로깅 최소화
+                options.add_argument("--disable-default-apps")  # ✅ 기본 앱 비활성화
+                options.add_argument("--disable-blink-features=AutomationControlled")  # ✅ Bot 감지 방지
+                options.add_argument("--disable-popup-blocking")  # ✅ 팝업 차단 해제 (일부 블로그에서 필요)
+                options.add_argument("--disable-client-side-phishing-detection")  # ✅ 피싱 감지 기능 비활성화
+                options.add_argument("--disable-background-timer-throttling")  # ✅ 백그라운드 타이머 제한 비활성화
+                options.add_argument("--disable-backgrounding-occluded-windows")  # ✅ 창이 가려져도 백그라운드로 실행
+                options.add_argument("--disable-ipc-flooding-protection")  # ✅ IPC 보호 해제 (응답 속도 향상)
+                options.add_argument("--disable-site-isolation-trials")  # ✅ 사이트 격리 비활성화 (메모리 절약)
+                options.add_argument("--disable-renderer-backgrounding")  # ✅ 렌더링 백그라운드 제한 해제
+                options.add_argument("--disk-cache-size=0")  # ✅ 디스크 캐시 사용 안 함 (메모리 절약)
+                options.add_argument("--media-cache-size=0")  # ✅ 미디어 캐시 사용 안 함 (메모리 절약)
+                options.add_argument("--mute-audio")  # ✅ 오디오 비활성화 (불필요한 리소스 사용 방지)
 
-                # ✅ 세션 충돌 방지
-                import tempfile
-                temp_user_dir = tempfile.mkdtemp()
-                options.add_argument(f"--user-data-dir={temp_user_dir}")
+                options.add_argument(f"--user-data-dir={temp_user_dir}")  # ✅ 세션 충돌 방지
+                options.add_argument(f"--remote-debugging-port={random_port}")  # ✅ 포트 충돌 방지
 
-                # ✅ WebDriver 실행
+                # ✅ WebDriver 실행 (옵션 적용 후 실행해야 함)
                 driver = webdriver.Chrome(service=service, options=options)
 
+                # ✅ 오래된 세션 자동 종료 (10분 후 실행)
+                def auto_quit(driver):
+                    time.sleep(600)  # 10분 후 자동 종료
+                    try:
+                        driver.quit()
+                        print("[INFO] 오래된 Chrome 세션 자동 종료됨.")
+                    except:
+                        pass
+
+                import threading
+                threading.Thread(target=auto_quit, args=(driver,), daemon=True).start()
+
+                # ✅ 엑셀 파일 생성
                 wb = Workbook()
                 ws = wb.active
                 ws.append(["블로그명", "작성일", "제목", "링크"])
@@ -298,8 +322,9 @@ def index():
                 wb.save(temp_filename)
                 return send_file(temp_filename, as_attachment=True)
 
-    # ✅ 항상 실행될 수 있도록 `if` 블록 바깥에 위치
-    return render_template("index.html", blog_ids=blog_ids)
+        # ✅ 항상 실행될 수 있도록 `if` 블록 바깥에 위치
+        return render_template("index.html", blog_ids=blog_ids)
+
 
 
 

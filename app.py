@@ -4,6 +4,7 @@ import time
 import re
 import tempfile
 import logging
+import random  # ✅ 추가 (포트 충돌 방지용)
 from selenium.webdriver.remote.remote_connection import LOGGER
 from datetime import datetime, timedelta
 from flask import Flask, request, send_file, render_template, jsonify

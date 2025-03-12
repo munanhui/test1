@@ -221,11 +221,11 @@ def index():
     blog_ids = load_blog_ids()
     id_to_alias = {blog["id"]: blog["alias"] for blog in blog_ids if "id" in blog and "alias" in blog}
 
-    # 🔹 `action` 변수를 미리 None으로 초기화 (이 부분 추가)
-    action = None
+    # ✅ `action`을 미리 None으로 초기화 (오류 방지)
+    action = None  
 
     if request.method == "POST":
-        action = request.form.get("action")  # ✅ POST 요청에서 action 값 가져오기
+        action = request.form.get("action")  # ✅ action 값 가져오기
 
         # 1) 블로그 추가 로직
         if action == "add_blog":
@@ -294,6 +294,7 @@ def index():
 
     # ✅ 항상 실행될 수 있도록 `if` 블록 바깥에 위치
     return render_template("index.html", blog_ids=blog_ids)
+
 
 
 

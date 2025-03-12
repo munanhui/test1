@@ -221,85 +221,82 @@ def get_blog_posts(driver, blog_id, post_limit):
 @app.route("/", methods=["GET", "POST"])
 def index():
     blog_ids = load_blog_ids()
-    # 블로그 ID와 별명을 매핑 (딕셔너리 형태)
     id_to_alias = {blog["id"]: blog["alias"] for blog in blog_ids if "id" in blog and "alias" in blog}
 
-    if request.method == "POST":
-        action = request.form.get("action")  # 어떤 버튼이 눌렸는지 구분 (add_blog or crawl)
+    # 🔹 `action` 변수를 미리 None으로 초기화 (이 부분 추가)
+    action = None
 
-        #  1) 블로그 추가 로직
+    if request.method == "POST":
+        action = request.form.get("action")  # ✅ POST 요청에서 action 값 가져오기
+
+        # 1) 블로그 추가 로직
         if action == "add_blog":
             new_blog_id = request.form.get("new_blog_id", "").strip()
             new_blog_alias = request.form.get("new_blog_alias", "").strip()
-            
+
             if new_blog_id and new_blog_alias:
                 # 중복 체크
-                duplicate = False
-                for b in blog_ids:
-                    if b["id"] == new_blog_id or b["alias"] == new_blog_alias:
-                        duplicate = True
-                        break
-                
-                if duplicate:
-                    print("[INFO] 중복된 블로그입니다. 추가하지 않습니다.")
-                else:
+                duplicate = any(b["id"] == new_blog_id or b["alias"] == new_blog_alias for b in blog_ids)
+
+                if not duplicate:
                     blog_ids.append({"id": new_blog_id, "alias": new_blog_alias})
                     save_blog_ids(blog_ids)
                     id_to_alias[new_blog_id] = new_blog_alias
                     print("[INFO] 새로운 블로그 추가 완료:", new_blog_id, new_blog_alias)
+                else:
+                    print("[INFO] 중복된 블로그입니다. 추가하지 않습니다.")
 
         # 2) 크롤링 로직
-    selected_blog_ids = []  # ✅ 미리 빈 리스트로 초기화
+        elif action == "crawl":
+            selected_blog_ids = request.form.getlist("selected_blog_ids")
+            post_count = request.form.get("post_count", "10")  # 기본값은 10건
 
-    if action == "crawl":
-        selected_blog_ids = request.form.getlist("selected_blog_ids")
-        post_count = request.form.get("post_count", "10")  # 기본값은 10건
+            try:
+                post_limit = int(post_count)
+            except ValueError:
+                post_limit = 10
 
-        try:
-            post_limit = int(post_count)
-        except ValueError:
-            post_limit = 10
+            if selected_blog_ids:
+                service = Service(ChromeDriverManager(driver_version="133").install())
+                options = Options()
 
-        if selected_blog_ids:
-            service = Service(ChromeDriverManager(driver_version="133").install())
-            options = Options()
+                # ✅ 크롬 안정성 향상 옵션 추가
+                options.add_argument("--headless")
+                options.add_argument("--no-sandbox")
+                options.add_argument("--disable-dev-shm-usage")
+                options.add_argument("--disable-gpu")
+                options.add_argument("--disable-software-rasterizer")
+                options.add_argument("--disable-features=VizDisplayCompositor")
+                options.add_argument("--disable-background-networking")
 
-            # ✅ 크롬 안정성 향상 옵션 추가
-            options.add_argument("--headless")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--disable-software-rasterizer")
-            options.add_argument("--disable-features=VizDisplayCompositor")
-            options.add_argument("--disable-background-networking")
+                # ✅ 세션 충돌 방지
+                import tempfile
+                temp_user_dir = tempfile.mkdtemp()
+                options.add_argument(f"--user-data-dir={temp_user_dir}")
 
-            # ✅ 세션 충돌 방지
-            import tempfile
-            temp_user_dir = tempfile.mkdtemp()
-            options.add_argument(f"--user-data-dir={temp_user_dir}")
+                # ✅ WebDriver 실행
+                driver = webdriver.Chrome(service=service, options=options)
 
-            # ✅ WebDriver 실행
-            driver = webdriver.Chrome(service=service, options=options)
+                wb = Workbook()
+                ws = wb.active
+                ws.append(["블로그명", "작성일", "제목", "링크"])
 
-            wb = Workbook()
-            ws = wb.active
-            ws.append(["블로그명", "작성일", "제목", "링크"])
+                for blog_id in selected_blog_ids:
+                    posts = get_blog_posts(driver, blog_id, post_limit)
+                    for post_date, title, url in posts:
+                        formatted_date = post_date.strftime("*(%m.%d)")
+                        alias = id_to_alias.get(blog_id, blog_id)
+                        ws.append([alias, formatted_date, title, url])
 
-            for blog_id in selected_blog_ids:
-                posts = get_blog_posts(driver, blog_id, post_limit)
-                for post_date, title, url in posts:
-                    formatted_date = post_date.strftime("*(%m.%d)")
-                    alias = id_to_alias.get(blog_id, blog_id)
-                    ws.append([alias, formatted_date, title, url])
+                driver.quit()
 
-            driver.quit()
-
-            temp_filename = tempfile.mktemp(suffix=".xlsx")
-            wb.save(temp_filename)
-            return send_file(temp_filename, as_attachment=True)
+                temp_filename = tempfile.mktemp(suffix=".xlsx")
+                wb.save(temp_filename)
+                return send_file(temp_filename, as_attachment=True)
 
     # ✅ 항상 실행될 수 있도록 `if` 블록 바깥에 위치
     return render_template("index.html", blog_ids=blog_ids)
+
 
 
 

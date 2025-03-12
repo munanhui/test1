@@ -4,7 +4,7 @@ import time
 import re
 import tempfile
 import logging
-import random  # ✅ 추가 (포트 충돌 방지용)
+
 from selenium.webdriver.remote.remote_connection import LOGGER
 from datetime import datetime, timedelta
 from flask import Flask, request, send_file, render_template, jsonify
@@ -223,10 +223,37 @@ def index():
     id_to_alias = {blog["id"]: blog["alias"] for blog in blog_ids if "id" in blog and "alias" in blog}
 
     # ✅ `action`을 미리 None으로 초기화 (오류 방지)
-    action = None  
+    action = request.form.get("action") if request.method == "POST" else None  
 
     if request.method == "POST":
         action = request.form.get("action")  # ✅ action 값 가져오기
+
+        if action == "add_blog":
+            new_blog_id = request.form.get("new_blog_id", "").strip()
+            new_blog_alias = request.form.get("new_blog_alias", "").strip()
+
+        if new_blog_id and new_blog_alias:
+            duplicate = any(b["id"] == new_blog_id or b["alias"] == new_blog_alias for b in blog_ids)
+            if not duplicate:
+                blog_ids.append({"id": new_blog_id, "alias": new_blog_alias})
+                save_blog_ids(blog_ids)
+                id_to_alias[new_blog_id] = new_blog_alias
+                print("[INFO] 새로운 블로그 추가 완료:", new_blog_id, new_blog_alias)
+            else:
+                print("[INFO] 중복된 블로그입니다. 추가하지 않습니다.")
+
+    elif action == "crawl":
+        selected_blog_ids = request.form.getlist("selected_blog_ids")
+        post_count = request.form.get("post_count", "10")
+
+        try:
+            post_limit = int(post_count)
+        except ValueError:
+            post_limit = 10
+
+        if selected_blog_ids:
+            service = Service(ChromeDriverManager(driver_version="133").install())
+            options = Options()
 
         # 1) 블로그 추가 로직
         if action == "add_blog":
@@ -326,20 +353,6 @@ def index():
         # ✅ 항상 실행될 수 있도록 `if` 블록 바깥에 위치
         return render_template("index.html", blog_ids=blog_ids)
 
-
-
-
-
-
-@app.route("/hello")
-def hello():
-    return "abc"
-
-if __name__ == "__main__":
-    os.makedirs(DATA_FOLDER, exist_ok=True)
-    if not os.path.exists(BLOG_IDS_FILE):
-        save_blog_ids([])
-    app.run(debug=True, host='0.0.0.0', port=5001)
 
 
 

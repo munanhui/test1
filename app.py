@@ -248,17 +248,19 @@ def index():
                     id_to_alias[new_blog_id] = new_blog_alias
                     print("[INFO] 새로운 블로그 추가 완료:", new_blog_id, new_blog_alias)
 
-        #  2) 크롤링 로직
-        if action == "crawl":
-            selected_blog_ids = request.form.getlist("selected_blog_ids")
-    post_count = request.form.get("post_count", "10")  # 기본값은 10건
-    try:
-        post_limit = int(post_count)
-    except ValueError:
-        post_limit = 10
+        # 2) 크롤링 로직
+    selected_blog_ids = []  # ✅ 미리 빈 리스트로 초기화
 
-    if selected_blog_ids:
-        with browser_semaphore:  # ✅ 동시 실행 제한 적용
+    if action == "crawl":
+        selected_blog_ids = request.form.getlist("selected_blog_ids")
+        post_count = request.form.get("post_count", "10")  # 기본값은 10건
+
+        try:
+            post_limit = int(post_count)
+        except ValueError:
+            post_limit = 10
+
+        if selected_blog_ids:
             service = Service(ChromeDriverManager(driver_version="133").install())
             options = Options()
 
@@ -266,37 +268,19 @@ def index():
             options.add_argument("--headless")
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")  # ✅ GPU 사용 방지
-            options.add_argument("--disable-software-rasterizer")  # ✅ 소프트웨어 가속 방지
-            options.add_argument("--disable-features=VizDisplayCompositor")  # ✅ 렌더링 최적화
-            options.add_argument("--disable-background-networking")  # ✅ 백그라운드 리소스 절약
+            options.add_argument("--disable-gpu")
+            options.add_argument("--disable-software-rasterizer")
+            options.add_argument("--disable-features=VizDisplayCompositor")
+            options.add_argument("--disable-background-networking")
 
-            # ✅ 세션 충돌 방지 (각 실행마다 고유한 프로필 사용)
+            # ✅ 세션 충돌 방지
             import tempfile
             temp_user_dir = tempfile.mkdtemp()
             options.add_argument(f"--user-data-dir={temp_user_dir}")
 
-            # ✅ 포트 충돌 방지 (각 실행마다 다른 포트 사용)
-            import random
-            random_port = random.randint(9222, 9999)
-            options.add_argument(f"--remote-debugging-port={random_port}")
-
             # ✅ WebDriver 실행
             driver = webdriver.Chrome(service=service, options=options)
 
-            # ✅ 크롬 자동 종료 (10분 후)
-            import threading
-            def auto_quit(driver):
-                time.sleep(600)  # 10분 후
-                try:
-                    driver.quit()
-                    print("[INFO] 오래된 Chrome 세션 자동 종료됨.")
-                except:
-                    pass
-
-            threading.Thread(target=auto_quit, args=(driver,), daemon=True).start()
-
-            # 엑셀 파일 생성 및 크롤링 실행
             wb = Workbook()
             ws = wb.active
             ws.append(["블로그명", "작성일", "제목", "링크"])
@@ -314,8 +298,9 @@ def index():
             wb.save(temp_filename)
             return send_file(temp_filename, as_attachment=True)
 
-
+    # ✅ 항상 실행될 수 있도록 `if` 블록 바깥에 위치
     return render_template("index.html", blog_ids=blog_ids)
+
 
 
 @app.route("/hello")
